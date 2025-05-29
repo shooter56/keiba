@@ -1,0 +1,7 @@
+# netkeiba_scraping/config.yaml   ← ルートに置く
+bet_strategy: mypkg.strategy:random_selector   # ← strategy 関数
+provider:      mypkg.provider:Spat4Provider    # ← 購入サイト用クラス
+provider_args:
+  headless: true                               # Selenium をヘッドレスで動かすか
+stake:        100                              # 1 点あたり金額（円）
+max_bets:     3                                # 1 日あたりの購入上限点数

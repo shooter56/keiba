@@ -1,0 +1,9 @@
+pandas
+numpy
+scikit-learn
+lightgbm
+openpyxl
+tqdm
+matplotlib      # グラフ出力ありの場合
+seaborn         # 視覚化が必要な場合
+joblib          # モデル保存用（LightGBMで使っていれば）

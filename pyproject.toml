@@ -1,0 +1,13 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mypkg"
+version = "0.1.0"
+description = "netkeiba scraping helpers"
+authors = [{name = "your-name"}]
+requires-python = ">=3.10"
+
+[tool.setuptools]
+packages = ["mypkg"]   # ルート直下にあるパッケージ名

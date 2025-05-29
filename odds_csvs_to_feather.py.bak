@@ -1,0 +1,124 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+"""
+odds_csvs_to_feather.py
+
+指定した「レース ID 先頭 6 桁」（複数可）に一致する
+predicted_odds_******.csv を読み込み、1 つの Feather ファイルへまとめる。
+
+・文字コードは UTF-8 / CP932 / Shift-JIS を自動判定
+・列名の前後空白を除去
+・「人気」・各種オッズ列などを数値化
+   └ 整数のみ → Int64 (nullable)
+   └ 少数を含む → Float64 (nullable)
+"""
+
+from __future__ import annotations
+
+import argparse
+import glob
+import os
+import pathlib
+import re
+import sys
+
+import pandas as pd
+
+
+# ----------------------------------------------------------------------
+# ヘルパー
+# ----------------------------------------------------------------------
+ENCODINGS = ("utf-8", "cp932", "shift_jis")  # 試す順
+
+RE_DASHES = re.compile(r"[－―–ｰ\-]")
+RE_NUMCOL = re.compile(r"(人気|[0-9０-９]+|.*オッズ.*)")
+
+
+def read_csv_best(path: str | pathlib.Path) -> pd.DataFrame | None:
+    """候補エンコーディングで順に読み込む。失敗したら None"""
+    for enc in ENCODINGS:
+        try:
+            return pd.read_csv(path, encoding=enc)
+        except UnicodeDecodeError:
+            continue
+    print(f"⚠️  SKIP (encoding) {path}", file=sys.stderr)
+    return None
+
+
+def cast_numeric_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """数値っぽい列を Int64 / Float64 に変換"""
+    num_cols = [c for c in df.columns if RE_NUMCOL.fullmatch(c)]
+    for col in num_cols:
+        cleaned = (
+            df[col]
+            .astype(str)
+            .str.strip()
+            .str.replace(",", "", regex=False)
+            .str.replace(RE_DASHES, "", regex=True)
+            .replace({"": None})
+        )
+
+        series = pd.to_numeric(cleaned, errors="coerce")
+
+        # 整数だけなら Int64 (欠損可)、そうでなければ Float64
+        if (series.dropna() % 1 == 0).all():
+            df[col] = series.astype("Int64")
+        else:
+            df[col] = series.astype("Float64")
+
+    return df
+
+
+# ----------------------------------------------------------------------
+# メイン
+# ----------------------------------------------------------------------
+def main() -> None:
+    ap = argparse.ArgumentParser(
+        description="predicted_odds_*.csv をまとめて Feather に変換"
+    )
+    ap.add_argument(
+        "--prefix",
+        nargs="+",
+        required=True,
+        metavar="XXXXXX",
+        help="レース ID 先頭 6 桁を空白区切りで指定（複数可）",
+    )
+    ap.add_argument(
+        "--out",
+        default="odds_output.feather",
+        metavar="FILE",
+        help="Feather 出力ファイル名（既定: odds_output.feather）",
+    )
+    args = ap.parse_args()
+
+    base_dir = pathlib.Path(__file__).resolve().parent
+    csvs: list[str] = sum(
+        [
+            glob.glob(str(base_dir / f"predicted_odds_{p}*.csv"))
+            for p in args.prefix
+        ],
+        [],
+    )
+
+    if not csvs:
+        sys.exit("⚠️  指定 prefix に一致する CSV が見つかりません。")
+
+    print(f"📄 {len(csvs)} CSV files found", file=sys.stderr)
+
+    frames = [df for fp in csvs if (df := read_csv_best(fp)) is not None]
+    if not frames:
+        sys.exit("⚠️  文字コード判定に失敗し、結合できる CSV がありません。")
+
+    df = pd.concat(frames, ignore_index=True)
+    df.rename(columns=lambda c: c.strip(), inplace=True)
+    df = cast_numeric_columns(df)
+
+    df.to_feather(args.out)
+    print(
+        f"✅ wrote {args.out}  ({os.path.getsize(args.out):,} bytes)",
+        file=sys.stderr,
+    )
+
+
+if __name__ == "__main__":
+    main()
